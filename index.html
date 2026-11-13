@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Maya TKJ - Layanan Server Jaringan (FTP & File Sharing)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#172033',
+                            950: '#0b1120',
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+
+        /* Packet Animation */
+        @keyframes packetMoveRight {
+            0% { left: 10%; opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { left: 90%; opacity: 0; }
+        }
+        @keyframes packetMoveLeft {
+            0% { left: 90%; opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { left: 10%; opacity: 0; }
+        }
+        .packet-to-server {
+            animation: packetMoveLeft 1.2s ease-in-out infinite;
+        }
+        .packet-to-client {
+            animation: packetMoveRight 1.2s ease-in-out infinite;
+        }
+        
+        /* Glassmorphism subtle effect */
+        .glass-panel {
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 font-sans min-h-screen flex flex-col transition-colors duration-200 selection:bg-blue-500 selection:text-white">
+
+    <!-- Toast Notification Container (Replaces alert) -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+
+    <!-- Custom Modal Dialog (Replaces prompt/confirm) -->
+    <div id="custom-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl max-w-md w-full p-6 transform transition-all">
+            <h3 id="modal-title" class="text-lg font-bold text-slate-900 dark:text-white mb-2">Judul Modal</h3>
+            <p id="modal-desc" class="text-sm text-slate-600 dark:text-slate-400 mb-4">Deskripsi modal</p>
+            <div id="modal-input-container" class="mb-4 hidden">
+                <input type="text" id="modal-input" class="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan nilai...">
+                <textarea id="modal-textarea" rows="3" class="w-full mt-2 px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 hidden" placeholder="Isi konten file..."></textarea>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button id="modal-cancel" class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition">Batal</button>
+                <button id="modal-confirm" class="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition">Konfirmasi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                    <i class="fa-solid fa-server text-lg"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-base sm:text-lg tracking-tight leading-none">Lab Maya TKJ</h1>
+                        <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-full border border-blue-200 dark:border-blue-800">ASJ • Kelas XI/XII</span>
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Administrasi Sistem Jaringan: FTP & File Sharing</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-4">
+                <!-- Progress Pill -->
+                <div class="hidden md:flex items-center gap-2 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700">
+                    <i class="fa-solid fa-list-check text-emerald-500 text-xs"></i>
+                    <span class="text-xs font-medium">Progres LKPD:</span>
+                    <span id="header-progress-text" class="text-xs font-bold text-blue-600 dark:text-blue-400">0/8</span>
+                </div>
+
+                <!-- Theme Toggle -->
+                <button id="theme-toggle" class="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition" title="Ganti Tema Terang/Gelap">
+                    <i id="theme-icon" class="fa-solid fa-sun text-amber-400"></i>
+                </button>
+
+                <!-- Reset Lab Button -->
+                <button onclick="resetLabConfirm()" class="p-2.5 sm:px-3 sm:py-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition text-xs font-medium flex items-center gap-1.5" title="Reset Simulasi">
+                    <i class="fa-solid fa-rotate-right"></i>
+                    <span class="hidden sm:inline">Reset Lab</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <div class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left/Main Area (8 cols on lg) -->
+        <div class="lg:col-span-8 flex flex-col gap-6">
+            
+            <!-- 1. Topologi Jaringan Visual Interaktif -->
+            <section class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50 dark:bg-slate-850/50">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <h2 class="font-semibold text-sm">Topologi Jaringan Lokal (LAN 192.168.10.0/24)</h2>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="openIpConfigModal()" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-blue-500"></i> Konfigurasi IP
+                        </button>
+                        <button onclick="runPingSimulation()" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-satellite-dish"></i> Uji Ping Koneksi
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Visual Topology Canvas -->
+                <div class="p-6 relative bg-gradient-to-b from-slate-100/50 to-slate-200/30 dark:from-slate-900 dark:to-slate-950">
+                    <!-- Traffic Status Banner -->
+                    <div id="network-activity-banner" class="mb-4 py-1.5 px-3 rounded-lg bg-slate-200/70 dark:bg-slate-800/80 border border-slate-300/50 dark:border-slate-700/50 flex items-center justify-between text-xs">
+                        <span class="text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                            <i class="fa-solid fa-circle-nodes text-blue-500"></i>
+                            <span id="traffic-status-text">Status Jaringan: Standby (Siap menerima paket data)</span>
+                        </span>
+                        <span id="subnet-status-badge" class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-medium">Link UP • 1Gbps</span>
+                    </div>
+
+                    <!-- Topology Nodes Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center relative py-2">
+                        
+                        <!-- Node 1: Debian/Ubuntu Server -->
+                        <div class="bg-white dark:bg-slate-800/90 border-2 border-blue-500/40 dark:border-blue-500/30 rounded-xl p-4 shadow-md relative z-10 flex flex-col items-center text-center">
+                            <div class="absolute top-2.5 right-2.5 flex gap-1">
+                                <span id="srv-ftp-led" class="w-2 h-2 rounded-full bg-emerald-500" title="FTP Service"></span>
+                                <span id="srv-smb-led" class="w-2 h-2 rounded-full bg-emerald-500" title="Samba Service"></span>
+                            </div>
+                            <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center text-2xl mb-2">
+                                <i class="fa-brands fa-linux"></i>
+                            </div>
+                            <h3 class="font-bold text-sm">Debian Server</h3>
+                            <span id="topo-ip-server" class="font-mono text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded mt-1 border border-blue-200 dark:border-blue-800">192.168.10.1</span>
+                            <div class="mt-2.5 flex flex-wrap justify-center gap-1 text-[10px]">
+                                <span id="badge-vsftpd" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium">vsftpd: ON</span>
+                                <span id="badge-smbd" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium">smbd: ON</span>
+                            </div>
+                        </div>
+
+                        <!-- Center: Switch & Animated Link Lines -->
+                        <div class="flex flex-col items-center justify-center relative py-4 md:py-0">
+                            <!-- Horizontal Connection Line (Desktop) -->
+                            <div class="hidden md:block absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-slate-300 dark:bg-slate-700 z-0">
+                                <div id="cable-left" class="h-full w-1/2 bg-emerald-500 transition-all duration-300 float-left"></div>
+                                <div id="cable-right" class="h-full w-1/2 bg-emerald-500 transition-all duration-300 float-right"></div>
+                            </div>
+                            
+                            <!-- Animated Data Packet -->
+                            <div id="animated-packet" class="hidden absolute top-1/2 -translate-y-1/2 z-20 px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-mono text-[10px] font-bold shadow-lg shadow-amber-500/40 whitespace-nowrap">
+                                <i class="fa-solid fa-envelope mr-1"></i>DATA
+                            </div>
+
+                            <!-- Switch Box -->
+                            <div class="bg-slate-800 text-white border border-slate-600 rounded-xl px-4 py-3 shadow-lg z-10 flex flex-col items-center">
+                                <i class="fa-solid fa-ethernet text-emerald-400 text-lg mb-1"></i>
+                                <span class="text-xs font-bold tracking-wide">Core Switch L2</span>
+                                <div class="flex gap-1 mt-1.5">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Node 2 & 3: Clients -->
+                        <div class="flex flex-col gap-3 z-10">
+                            <!-- Client 1: Windows -->
+                            <div class="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-xl p-3 shadow-sm flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 flex items-center justify-center text-lg shrink-0">
+                                    <i class="fa-brands fa-windows"></i>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="font-bold text-xs truncate">Client 1 (Windows)</h4>
+                                        <span id="c1-link-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    </div>
+                                    <p id="topo-ip-c1" class="font-mono text-[11px] text-slate-500 dark:text-slate-400">192.168.10.2</p>
+                                    <span class="text-[10px] text-sky-600 dark:text-sky-400 font-medium">FileZilla & Explorer</span>
+                                </div>
+                            </div>
+
+                            <!-- Client 2: Linux Desktop -->
+                            <div class="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-xl p-3 shadow-sm flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center text-lg shrink-0">
+                                    <i class="fa-brands fa-ubuntu"></i>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="font-bold text-xs truncate">Client 2 (Ubuntu)</h4>
+                                        <span id="c2-link-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    </div>
+                                    <p id="topo-ip-c2" class="font-mono text-[11px] text-slate-500 dark:text-slate-400">192.168.10.3</p>
+                                    <span class="text-[10px] text-amber-600 dark:text-amber-400 font-medium">FTP CLI & SMB Client</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mini Ping Console Output (Collapsible) -->
+                    <div id="ping-console" class="hidden mt-4 bg-slate-950 text-emerald-400 font-mono text-xs p-3 rounded-xl border border-slate-800">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2 text-slate-400">
+                            <span><i class="fa-solid fa-terminal mr-1.5"></i>Terminal Diagnostic (ICMP Echo)</span>
+                            <button onclick="document.getElementById('ping-console').classList.add('hidden')" class="hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div id="ping-output" class="space-y-1 max-h-28 overflow-y-auto"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Navigation Tabs for Practical Modules -->
+            <div class="flex p-1 bg-slate-200/80 dark:bg-slate-900 rounded-xl border border-slate-300/50 dark:border-slate-800">
+                <button onclick="switchTab('ftp')" id="tab-btn-ftp" class="flex-1 py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-2 bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm">
+                    <i class="fa-solid fa-right-left"></i>
+                    <span>Modul 1: FTP Server (vsftpd)</span>
+                </button>
+                <button onclick="switchTab('samba')" id="tab-btn-samba" class="flex-1 py-2.5 px-4 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                    <i class="fa-solid fa-folder-tree"></i>
+                    <span>Modul 2: File Sharing (Samba)</span>
+                </button>
+            </div>
+
+            <!-- ===================================================================== -->
+            <!-- MODULE 1: FTP SERVER (VSFTPD) & CLIENT SIMULATOR                      -->
+            <!-- ===================================================================== -->
+            <div id="module-ftp" class="space-y-6">
+                
+                <!-- Server Configuration Panel (vsftpd.conf) -->
+                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-850/50">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-blue-500"></i>
+                            <h3 class="font-bold text-sm">Konfigurasi Server FTP (<code class="font-mono text-xs text-blue-500">/etc/vsftpd.conf</code>)</h3>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-slate-500">Service:</span>
+                            <button id="toggle-vsftpd-btn" onclick="toggleFtpService()" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition">
+                                <i class="fa-solid fa-power-off mr-1"></i> Active (Running)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Form Controls -->
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                                <div>
+                                    <label class="font-semibold text-xs block">Anonymous Login (`anonymous_enable`)</label>
+                                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Izinkan login tanpa password (user: anonymous)</span>
+                                </div>
+                                <input type="checkbox" id="ftp-anon-enable" onchange="updateVsftpdConfig()" class="w-4 h-4 accent-blue-600 rounded cursor-pointer">
+                            </div>
+
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                                <div>
+                                    <label class="font-semibold text-xs block">Local User Login (`local_enable`)</label>
+                                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Izinkan user sistem Linux masuk ke FTP</span>
+                                </div>
+                                <input type="checkbox" id="ftp-local-enable" checked onchange="updateVsftpdConfig()" class="w-4 h-4 accent-blue-600 rounded cursor-pointer">
+                            </div>
+
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                                <div>
+                                    <label class="font-semibold text-xs block">Write Permission (`write_enable`)</label>
+                                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Izinkan upload, buat folder, dan hapus file</span>
+                                </div>
+                                <input type="checkbox" id="ftp-write-enable" onchange="updateVsftpdConfig()" class="w-4 h-4 accent-blue-600 rounded cursor-pointer">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                                    <label class="font-semibold text-xs block mb-1">Port Control FTP</label>
+                                    <input type="number" id="ftp-port-input" value="21" onchange="updateVsftpdConfig()" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                                </div>
+                                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                                    <label class="font-semibold text-xs block mb-1">Tambah User FTP</label>
+                                    <button onclick="openAddFtpUserModal()" class="w-full py-1.5 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition flex items-center justify-center gap-1">
+                                        <i class="fa-solid fa-user-plus"></i> User Baru
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Live Config File Preview & User List -->
+                        <div class="flex flex-col gap-3">
+                            <div class="bg-slate-950 rounded-xl p-3.5 border border-slate-800 font-mono text-xs text-slate-300 flex-1">
+                                <div class="flex items-center justify-between text-[11px] text-slate-500 border-b border-slate-800 pb-1.5 mb-2">
+                                    <span>nano /etc/vsftpd.conf</span>
+                                    <span class="text-emerald-400">Auto-Applied</span>
+                                </div>
+                                <pre id="vsftpd-code-preview" class="leading-relaxed text-emerald-300 overflow-x-auto"></pre>
+                            </div>
+                            <div class="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700/60">
+                                <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Daftar Akun User FTP Terdaftar:</span>
+                                <div id="ftp-users-list" class="flex flex-wrap gap-1.5"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FTP Client Simulator (FileZilla Style GUI + Protocol Logs) -->
+                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-850/50">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 rounded bg-rose-600 text-white flex items-center justify-center text-xs font-bold">FZ</div>
+                            <h3 class="font-bold text-sm">Simulasi FTP Client (Client 1 - FileZilla GUI)</h3>
+                        </div>
+                        <span id="ftp-conn-status" class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">Tidak Terhubung</span>
+                    </div>
+
+                    <!-- Quickconnect Bar -->
+                    <div class="p-4 bg-slate-100/70 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-2.5 items-end">
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-500 mb-1">Host (IP Server)</label>
+                            <input type="text" id="fz-host" value="192.168.10.1" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-500 mb-1">Username</label>
+                            <input type="text" id="fz-user" value="siswa" placeholder="siswa / anonymous" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-500 mb-1">Password</label>
+                            <input type="password" id="fz-pass" value="12345" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-500 mb-1">Port</label>
+                            <input type="number" id="fz-port" value="21" class="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                        </div>
+                        <div class="col-span-2 sm:col-span-1 flex gap-1.5">
+                            <button onclick="connectFtpClient()" id="fz-connect-btn" class="flex-1 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-sm">
+                                Quickconnect
+                            </button>
+                            <button onclick="disconnectFtpClient()" id="fz-disconnect-btn" class="hidden py-1.5 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition">
+                                Putus
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Real-time FTP Protocol Command Log -->
+                    <div class="bg-slate-950 px-4 py-2.5 border-b border-slate-800 font-mono text-[11px] h-28 overflow-y-auto" id="ftp-protocol-log">
+                        <div class="text-slate-500">Status: Menunggu koneksi ke server FTP... Masukkan Host, Username, Password lalu klik Quickconnect.</div>
+                    </div>
+
+                    <!-- Dual Pane File Manager (Local vs Remote) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-slate-800">
+                        
+                        <!-- Left Pane: Local Site (Client 1) -->
+                        <div class="p-4 flex flex-col">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-bold flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                                    <i class="fa-solid fa-laptop text-sky-500"></i> Local Site (C:\Users\Siswa\Dokumen)
+                                </span>
+                                <button onclick="createLocalFtpFile()" class="text-[11px] px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 transition">
+                                    + File Baru
+                                </button>
+                            </div>
+                            <div id="ftp-local-files" class="border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800/80 min-h-[160px] max-h-[220px] overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50">
+                                <!-- Local files injected by JS -->
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-2"><i class="fa-solid fa-circle-info mr-1"></i>Klik ikon <span class="text-blue-500 font-semibold">Upload</span> untuk mengirim file ke Server.</p>
+                        </div>
+
+                        <!-- Right Pane: Remote Site (FTP Server) -->
+                        <div class="p-4 flex flex-col">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-bold flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                                    <i class="fa-solid fa-server text-emerald-500"></i> Remote Site (<span id="ftp-remote-path">/home/siswa/ftp</span>)
+                                </span>
+                                <button onclick="createRemoteFtpFolder()" class="text-[11px] px-2 py-0.5 rounded bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/25 transition font-medium">
+                                    <i class="fa-solid fa-folder-plus mr-1"></i>Folder Baru
+                                </button>
+                            </div>
+                            <div id="ftp-remote-files" class="border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800/80 min-h-[160px] max-h-[220px] overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50">
+                                <div class="p-8 text-center text-xs text-slate-400">Belum terhubung ke server FTP</div>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-2"><i class="fa-solid fa-circle-info mr-1"></i>Gunakan aksi <span class="text-emerald-500 font-semibold">Download</span> atau <span class="text-rose-500 font-semibold">Hapus</span> pada file remote.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===================================================================== -->
+            <!-- MODULE 2: FILE SHARING (SAMBA / SMB) SIMULATOR                        -->
+            <!-- ===================================================================== -->
+            <div id="module-samba" class="hidden space-y-6">
+                
+                <!-- Server Configuration Panel (smb.conf) -->
+                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-850/50">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-share-nodes text-indigo-500"></i>
+                            <h3 class="font-bold text-sm">Konfigurasi Server Samba (<code class="font-mono text-xs text-indigo-500">/etc/samba/smb.conf</code>)</h3>
+                        </div>
+                        <button id="toggle-smbd-btn" onclick="toggleSmbService()" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition">
+                            <i class="fa-solid fa-power-off mr-1"></i> smbd Active
+                        </button>
+                    </div>
+
+                    <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Samba Settings Form -->
+                        <div class="space-y-3.5">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold mb-1">Workgroup</label>
+                                    <input type="text" id="smb-workgroup" value="WORKGROUP" onchange="updateSmbConfig()" class="w-full px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold mb-1">Nama Share Folder</label>
+                                    <input type="text" id="smb-sharename" value="SharedData" onchange="updateSmbConfig()" class="w-full px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-semibold mb-1">Path Direktori Server</label>
+                                <input type="text" id="smb-path" value="/srv/samba/shared" onchange="updateSmbConfig()" class="w-full px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-mono text-xs">
+                            </div>
+
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                                <div>
+                                    <label class="font-semibold text-xs block">Hak Akses Tulis (`writable = yes`)</label>
+                                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Jika nonaktif, folder berstatus Read-Only</span>
+                                </div>
+                                <input type="checkbox" id="smb-writable" onchange="updateSmbConfig()" class="w-4 h-4 accent-indigo-600 rounded cursor-pointer">
+                            </div>
+
+                            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60">
+                                <div>
+                                    <label class="font-semibold text-xs block">Guest OK (`guest ok = yes`)</label>
+                                    <span class="text-[11px] text-slate-500 dark:text-slate-400">Izinkan akses publik tanpa login user Samba</span>
+                                </div>
+                                <input type="checkbox" id="smb-guest" checked onchange="updateSmbConfig()" class="w-4 h-4 accent-indigo-600 rounded cursor-pointer">
+                            </div>
+                        </div>
+
+                        <!-- Live smb.conf Preview -->
+                        <div class="bg-slate-950 rounded-xl p-4 border border-slate-800 font-mono text-xs text-slate-300 flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center justify-between text-[11px] text-slate-500 border-b border-slate-800 pb-1.5 mb-2">
+                                    <span>nano /etc/samba/smb.conf</span>
+                                    <span class="text-indigo-400">Port TCP 445</span>
+                                </div>
+                                <pre id="smb-code-preview" class="leading-relaxed text-indigo-300 overflow-x-auto"></pre>
+                            </div>
+                            <div class="mt-3 pt-2 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+                                <span>Akun Samba Valid: <code class="text-amber-400">admin / tkj123</code></span>
+                                <span id="smb-perm-badge" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">Read-Only</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Client File Explorer (Network Share Simulator) -->
+                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50 dark:bg-slate-850/50">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-folder-open text-amber-500"></i>
+                            <h3 class="font-bold text-sm">File Explorer Client (Network Share)</h3>
+                        </div>
+                        <!-- Switch Active Client -->
+                        <div class="flex items-center gap-1.5 bg-slate-200 dark:bg-slate-800 p-1 rounded-lg">
+                            <button onclick="setSmbActiveClient('Client 1 (Windows)')" id="smb-c1-btn" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-white dark:bg-slate-700 shadow-sm transition">
+                                <i class="fa-brands fa-windows text-sky-500 mr-1"></i>Client 1
+                            </button>
+                            <button onclick="setSmbActiveClient('Client 2 (Ubuntu)')" id="smb-c2-btn" class="px-2.5 py-1 rounded-md text-xs font-semibold text-slate-600 dark:text-slate-400 transition">
+                                <i class="fa-brands fa-ubuntu text-amber-500 mr-1"></i>Client 2
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Address Bar -->
+                    <div class="p-3 bg-slate-100/70 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex gap-2">
+                        <div class="flex-1 flex items-center bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 font-mono text-xs">
+                            <i class="fa-solid fa-network-wired text-slate-400 mr-2"></i>
+                            <input type="text" id="smb-unc-input" value="\\192.168.10.1\SharedData" class="w-full bg-transparent focus:outline-none">
+                        </div>
+                        <button onclick="accessSmbShare()" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrow-right"></i> Buka Share
+                        </button>
+                    </div>
+
+                    <!-- Authentication Prompt Banner (Shown when Guest OK = No and not logged in) -->
+                    <div id="smb-auth-box" class="hidden p-6 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-900/50">
+                        <div class="max-w-md mx-auto text-center">
+                            <div class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-2">
+                                <i class="fa-solid fa-lock"></i>
+                            </div>
+                            <h4 class="font-bold text-sm mb-1">Autentikasi Jaringan Diperlukan</h4>
+                            <p class="text-xs text-slate-600 dark:text-slate-400 mb-3">Server menonaktifkan akses Guest. Masukkan kredensial Samba untuk mengakses folder ini.</p>
+                            <div class="grid grid-cols-2 gap-2 mb-3">
+                                <input type="text" id="smb-login-user" placeholder="Username (admin)" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs">
+                                <input type="password" id="smb-login-pass" placeholder="Password (tkj123)" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs">
+                            </div>
+                            <button onclick="authenticateSmb()" class="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition">
+                                Login ke Share Folder
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Shared Folder Contents -->
+                    <div id="smb-explorer-body" class="p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <span id="smb-current-view-label" class="text-xs text-slate-500">Klik <strong>Buka Share</strong> untuk mengakses direktori jaringan server.</span>
+                            <div class="flex gap-2">
+                                <button onclick="createSmbTextFile()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition flex items-center gap-1.5">
+                                    <i class="fa-solid fa-file-circle-plus"></i> Buat File Teks Baru
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="smb-files-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 min-h-[140px] p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                            <div class="col-span-full flex flex-col items-center justify-center text-slate-400 py-8 text-xs">
+                                <i class="fa-solid fa-network-wired text-2xl mb-2 opacity-50"></i>
+                                <span>Folder jaringan belum dibuka</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Sidebar: LKPD Jobsheet & Interactive Quiz (4 cols on lg) -->
+        <aside class="lg:col-span-4 flex flex-col gap-6">
+            
+            <!-- Sidebar Tabs -->
+            <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col h-full">
+                <div class="grid grid-cols-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
+                    <button onclick="switchSidebarTab('lkpd')" id="side-tab-lkpd" class="py-3.5 text-xs font-bold border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-clipboard-check"></i> LKPD Praktikum
+                    </button>
+                    <button onclick="switchSidebarTab('quiz')" id="side-tab-quiz" class="py-3.5 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-graduation-cap"></i> Kuis Evaluasi
+                    </button>
+                </div>
+
+                <!-- TAB 1: LKPD / JOBSHEET CHECKLIST -->
+                <div id="sidebar-lkpd-content" class="p-5 flex-1 flex flex-col justify-between space-y-5">
+                    <div>
+                        <div class="mb-4">
+                            <div class="flex items-center justify-between text-xs mb-1.5">
+                                <span class="font-semibold text-slate-700 dark:text-slate-300">Penyelesaian Praktikum</span>
+                                <span id="lkpd-percentage" class="font-bold text-blue-600 dark:text-blue-400">0%</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div id="lkpd-progress-bar" class="h-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+                            Lakukan langkah-langkah praktikum di bawah ini pada simulator. Checklist akan tercentang <strong>secara otomatis</strong> saat konfigurasi atau aksi berhasil dilakukan!
+                        </p>
+
+                        <!-- Checklist Items -->
+                        <div id="lkpd-checklist" class="space-y-2.5">
+                            <!-- Injected via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Completion Certificate Banner -->
+                    <div id="lkpd-complete-banner" class="hidden p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border border-emerald-500/30 text-center">
+                        <div class="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto mb-2 shadow-lg shadow-emerald-500/30">
+                            <i class="fa-solid fa-award text-lg"></i>
+                        </div>
+                        <h4 class="font-bold text-sm text-emerald-700 dark:text-emerald-300">Praktikum Selesai!</h4>
+                        <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Semua kompetensi FTP Server dan Samba File Sharing telah tercapai. Lanjutkan ke Kuis Evaluasi!</p>
+                        <button onclick="switchSidebarTab('quiz')" class="mt-3 w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition">
+                            Mulai Kuis Evaluasi &rarr;
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TAB 2: INTERACTIVE QUIZ -->
+                <div id="sidebar-quiz-content" class="hidden p-5 flex-1 flex flex-col">
+                    <div id="quiz-container" class="space-y-4">
+                        <!-- Quiz questions injected via JS -->
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-200 dark:border-slate-800 py-4 mt-8 bg-white dark:bg-slate-900">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+            <p>Lab Maya TKJ • Mata Pelajaran Administrasi Sistem Jaringan (ASJ)</p>
+            <p>Simulasi Protokol: <span class="font-mono">ICMP</span> • <span class="font-mono">FTP (TCP/21)</span> • <span class="font-mono">SMB/CIFS (TCP/445)</span></p>
+        </div>
+    </footer>
+
+    <!-- ========================================================================= -->
+    <!-- JAVASCRIPT SIMULATION ENGINE                                              -->
+    <!-- ========================================================================= -->
+    <script>
+        // --- 1. STATE MANAGEMENT ---
+        const initialState = {
+            network: {
+                serverIp: '192.168.10.1',
+                client1Ip: '192.168.10.2',
+                client2Ip: '192.168.10.3',
+                subnetMask: '255.255.255.0'
+            },
+            ftp: {
+                serviceRunning: true,
+                anonymousEnable: false,
+                localEnable: true,
+                writeEnable: false,
+                port: 21,
+                users: [
+                    { username: 'siswa', password: '12345', home: '/home/siswa/ftp' },
+                    { username: 'admin', password: 'admin123', home: '/home/admin/ftp' }
+                ],
+                connected: false,
+                currentUser: null,
+                localFiles: [
+                    { name: 'laporan_tkj.pdf', size: '1.2 MB', type: 'file', content: 'Laporan Praktikum Jaringan Komputer.' },
+                    { name: 'topologi_lan.pkt', size: '450 KB', type: 'file', content: 'Cisco Packet Tracer File.' },
+                    { name: 'catatan_ip.txt', size: '4 KB', type: 'file', content: 'Server: 192.168.10.1\nGateway: 192.168.10.254' }
+                ],
+                remoteFiles: [
+                    { name: 'modul_asj_debian.pdf', size: '2.8 MB', type: 'file', content: 'Materi Administrasi Sistem Jaringan Debian 12.' },
+                    { name: 'iso_installer', size: '-', type: 'folder' }
+                ]
+            },
+            samba: {
+                serviceRunning: true,
+                workgroup: 'WORKGROUP',
+                shareName: 'SharedData',
+                path: '/srv/samba/shared',
+                writable: false,
+                guestOk: true,
+                activeClient: 'Client 1 (Windows)',
+                shareOpened: false,
+                authenticated: false,
+                sharedFiles: [
+                    { name: 'Jadwal_Lab_TKJ.txt', owner: 'Server', size: '2 KB', content: 'Senin - Jumat: Praktikum Administrasi Sistem Jaringan.' },
+                    { name: 'Panduan_Samba.txt', owner: 'Server', size: '5 KB', content: 'Gunakan UNC Path \\\\192.168.10.1\\SharedData dari Windows Explorer.' }
+                ]
+            },
+            tasks: {
+                pingTested: false,
+                ftpWriteEnabled: false,
+                ftpConnected: false,
+                ftpUploaded: false,
+                ftpFolderCreated: false,
+                smbWritableEnabled: false,
+                smbFileCreated: false,
+                smbCrossClientVerified: false
+            }
+        };
+
+        let state = JSON.parse(JSON.stringify(initialState));
+
+        // --- 2. LKPD TASKS DEFINITION ---
+        const lkpdTasks = [
+            { id: 'pingTested', title: '1. Uji Konektivitas Jaringan', desc: 'Lakukan uji Ping dari Client ke Server (192.168.10.1).' },
+            { id: 'ftpWriteEnabled', title: '2. Konfigurasi Write FTP', desc: 'Aktifkan opsi write_enable pada konfigurasi vsftpd.conf.' },
+            { id: 'ftpConnected', title: '3. Koneksi Klien FTP', desc: 'Hubungkan FileZilla Client ke FTP Server dengan user valid.' },
+            { id: 'ftpUploaded', title: '4. Transfer Upload FTP', desc: 'Unggah (Upload) minimal 1 file dari Local Site ke Remote Site.' },
+            { id: 'ftpFolderCreated', title: '5. Manajemen Direktori FTP', desc: 'Buat 1 folder baru di direktori Remote FTP Server.' },
+            { id: 'smbWritableEnabled', title: '6. Konfigurasi Samba Read/Write', desc: 'Ubah hak akses Samba menjadi writable = yes pada smb.conf.' },
+            { id: 'smbFileCreated', title: '7. Buat File di Network Share', desc: 'Buka share folder Samba dan buat file teks baru dari Client.' },
+            { id: 'smbCrossClientVerified', title: '8. Berbagi Lintas Client (SMB)', desc: 'Buka share folder menggunakan Client 2 (Ubuntu) untuk melihat file.' }
+        ];
+
+        // --- 3. QUIZ QUESTIONS DEFINITION ---
+        const quizQuestions = [
+            {
+                q: "Port default yang digunakan oleh layanan FTP untuk jalur kontrol (command channel) adalah...",
+                options: ["Port 20", "Port 21", "Port 22", "Port 445"],
+                answer: 1,
+                explanation: "Port 21 digunakan sebagai control connection pada protokol FTP, sedangkan Port 20 digunakan untuk data transfer pada mode aktif."
+            },
+            {
+                q: "Parameter pada file /etc/vsftpd.conf yang berfungsi mengizinkan pengguna mengunggah (upload) atau menghapus file di server adalah...",
+                options: ["local_enable=YES", "anonymous_enable=YES", "write_enable=YES", "chroot_local_user=YES"],
+                answer: 2,
+                explanation: "write_enable=YES wajib diaktifkan agar perintah FTP seperti STOR (upload), MKD (buat folder), dan DELE (hapus) diizinkan."
+            },
+            {
+                q: "Perintah protokol FTP yang dikirimkan oleh client ketika mengunggah file ke server adalah...",
+                options: ["RETR", "LIST", "STOR", "PASV"],
+                answer: 2,
+                explanation: "STOR (Store) digunakan untuk mengirim/menyimpan file ke server, sedangkan RETR (Retrieve) digunakan untuk mengunduh file."
+            },
+            {
+                q: "Layanan pada sistem operasi Linux yang memungkinkan berbagi file dan printer dengan sistem operasi Windows menggunakan protokol SMB/CIFS adalah...",
+                options: ["vsftpd", "Apache2", "Samba", "Bind9"],
+                answer: 2,
+                explanation: "Samba mengimplementasikan protokol SMB/CIFS sehingga Linux dan Windows dapat saling berbagi folder dan printer dalam jaringan lokal."
+            },
+            {
+                q: "Jika pada konfigurasi share Samba diatur parameter 'writable = no' dan 'guest ok = yes', maka perilaku yang terjadi saat client mengakses folder tersebut adalah...",
+                options: [
+                    "Client bisa membaca dan menghapus semua file tanpa login",
+                    "Client hanya bisa membuka/membaca file, namun ditolak (Permission Denied) saat membuat atau mengubah file",
+                    "Client diminta memasukkan password root Linux",
+                    "Folder tidak dapat ditemukan di jaringan"
+                ],
+                answer: 1,
+                explanation: "guest ok = yes mengizinkan akses tanpa password, namun writable = no membatasi hak akses hanya sebatas Read-Only."
+            },
+            {
+                q: "Format penulisan UNC (Universal Naming Convention) yang benar di Windows Explorer untuk mengakses folder 'SharedData' pada server ber-IP 192.168.10.1 adalah...",
+                options: [
+                    "http://192.168.10.1/SharedData",
+                    "//192.168.10.1:21/SharedData",
+                    "\\\\192.168.10.1\\SharedData",
+                    "ftp://192.168.10.1/SharedData"
+                ],
+                answer: 2,
+                explanation: "Windows menggunakan tanda double backslash (\\\\IP_Server\\Nama_Share) untuk mengakses resource jaringan berbasis SMB."
+            }
+        ];
+
+        // --- 4. INITIALIZATION & UI HELPERS ---
+        window.onload = function() {
+            initTheme();
+            renderAll();
+            renderQuiz();
+        };
+
+        function initTheme() {
+            const themeToggle = document.getElementById('theme-toggle');
+            const themeIcon = document.getElementById('theme-icon');
+            
+            themeToggle.addEventListener('click', () => {
+                document.documentElement.classList.toggle('dark');
+                const isDark = document.documentElement.classList.contains('dark');
+                themeIcon.className = isDark ? 'fa-solid fa-sun text-amber-400' : 'fa-solid fa-moon text-slate-700';
+            });
+        }
+
+        function showToast(title, message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-emerald-600 text-white border-emerald-500',
+                error: 'bg-rose-600 text-white border-rose-500',
+                warning: 'bg-amber-500 text-slate-950 border-amber-400',
+                info: 'bg-slate-800 text-white border-slate-700'
+            };
+            const icons = {
+                success: 'fa-circle-check',
+                error: 'fa-circle-exclamation',
+                warning: 'fa-triangle-exclamation',
+                info: 'fa-circle-info'
+            };
+
+            toast.className = `${colors[type]} border px-4 py-3 rounded-xl shadow-xl flex items-start gap-3 transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto`;
+            toast.innerHTML = `
+                <i class="fa-solid ${icons[type]} mt-0.5"></i>
+                <div class="text-xs">
+                    <div class="font-bold">${title}</div>
+                    <div class="opacity-90 mt-0.5">${message}</div>
+                </div>
+            `;
+            container.appendChild(toast);
+            
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // Custom Modal Helper (Replaces prompt/confirm)
+        function openModal({ title, desc, showInput = false, showTextarea = false, inputPlaceholder = '', defaultValue = '', onConfirm }) {
+            const modal = document.getElementById('custom-modal');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-desc').textContent = desc;
+            
+            const inputContainer = document.getElementById('modal-input-container');
+            const inputEl = document.getElementById('modal-input');
+            const textareaEl = document.getElementById('modal-textarea');
+
+            if (showInput) {
+                inputContainer.classList.remove('hidden');
+                inputEl.value = defaultValue;
+                inputEl.placeholder = inputPlaceholder;
+                textareaEl.value = '';
+                textareaEl.classList.toggle('hidden', !showTextarea);
+            } else {
+                inputContainer.classList.add('hidden');
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            const confirmBtn = document.getElementById('modal-confirm');
+            const cancelBtn = document.getElementById('modal-cancel');
+
+            const cleanup = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                confirmBtn.onclick = null;
+                cancelBtn.onclick = null;
+            };
+
+            cancelBtn.onclick = cleanup;
+            confirmBtn.onclick = () => {
+                const val = inputEl.value.trim();
+                const textVal = textareaEl.value;
+                cleanup();
+                if (onConfirm) onConfirm(val, textVal);
+            };
+        }
+
+        function resetLabConfirm() {
+            openModal({
+                title: 'Reset Seluruh Lab Simulasi?',
+                desc: 'Semua konfigurasi server, file yang diunggah, serta progres checklist LKPD akan dikembalikan ke pengaturan awal.',
+                onConfirm: () => {
+                    state = JSON.parse(JSON.stringify(initialState));
+                    document.getElementById('ftp-anon-enable').checked = false;
+                    document.getElementById('ftp-local-enable').checked = true;
+                    document.getElementById('ftp-write-enable').checked = false;
+                    document.getElementById('ftp-port-input').value = 21;
+                    document.getElementById('smb-workgroup').value = 'WORKGROUP';
+                    document.getElementById('smb-sharename').value = 'SharedData';
+                    document.getElementById('smb-path').value = '/srv/samba/shared';
+                    document.getElementById('smb-writable').checked = false;
+                    document.getElementById('smb-guest').checked = true;
+                    document.getElementById('ftp-protocol-log').innerHTML = '<div class="text-slate-500">Status: Lab telah di-reset.</div>';
+                    renderAll();
+                    renderQuiz();
+                    showToast('Lab Direset', 'Semua konfigurasi kembali ke default.', 'info');
+                }
+            });
+        }
+
+        // --- 5. NETWORK TOPOLOGY & PACKET ANIMATION ---
+        function triggerPacketAnimation(direction = 'to-server', label = 'TCP/DATA', duration = 1800) {
+            const packet = document.getElementById('animated-packet');
+            const statusText = document.getElementById('traffic-status-text');
+            
+            packet.innerHTML = `<i class="fa-solid fa-box-open mr-1"></i>${label}`;
+            packet.classList.remove('hidden', 'packet-to-server', 'packet-to-client');
+            packet.classList.add(direction === 'to-server' ? 'packet-to-server' : 'packet-to-client');
+            statusText.textContent = `Transmisi Aktif: Mengirim paket ${label} melalui Switch L2...`;
+
+            setTimeout(() => {
+                packet.classList.add('hidden');
+                packet.classList.remove('packet-to-server', 'packet-to-client');
+                statusText.textContent = 'Status Jaringan: Standby (Siap menerima paket data)';
+            }, duration);
+        }
+
+        function isSameSubnet(ip1, ip2) {
+            const p1 = ip1.split('.');
+            const p2 = ip2.split('.');
+            if (p1.length !== 4 || p2.length !== 4) return false;
+            return p1[0] === p2[0] && p1[1] === p2[1] && p1[2] === p2[2];
+        }
+
+        function openIpConfigModal() {
+            openModal({
+                title: 'Konfigurasi IP Address Jaringan (/24)',
+                desc: 'Ubah IP Address Debian Server (Pastikan satu subnet 192.168.10.x dengan Client 1 & 2 agar terhubung).',
+                showInput: true,
+                defaultValue: state.network.serverIp,
+                inputPlaceholder: 'Contoh: 192.168.10.1',
+                onConfirm: (newIp) => {
+                    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+                    if (!ipRegex.test(newIp)) {
+                        showToast('Format IP Salah', 'Masukkan format IPv4 yang valid (contoh: 192.168.10.1).', 'error');
+                        return;
+                    }
+                    state.network.serverIp = newIp;
+                    document.getElementById('fz-host').value = newIp;
+                    document.getElementById('smb-unc-input').value = `\\\\${newIp}\\${state.samba.shareName}`;
+                    updateTopologyUI();
+                    showToast('IP Server Diperbarui', `IP Debian Server sekarang ${newIp}`, 'info');
+                }
+            });
+        }
+
+        function updateTopologyUI() {
+            document.getElementById('topo-ip-server').textContent = state.network.serverIp;
+            document.getElementById('topo-ip-c1').textContent = state.network.client1Ip;
+            document.getElementById('topo-ip-c2').textContent = state.network.client2Ip;
+
+            const connected = isSameSubnet(state.network.serverIp, state.network.client1Ip);
+            const badge = document.getElementById('subnet-status-badge');
+            const cableLeft = document.getElementById('cable-left');
+
+            if (connected) {
+                badge.className = 'px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-medium';
+                badge.textContent = 'Link UP • 1Gbps';
+                cableLeft.className = 'h-full w-1/2 bg-emerald-500 transition-all duration-300 float-left';
+            } else {
+                badge.className = 'px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 font-mono text-[11px] font-medium';
+                badge.textContent = 'Subnet Mismatch!';
+                cableLeft.className = 'h-full w-1/2 bg-rose-500 transition-all duration-300 float-left';
+            }
+        }
+
+        function runPingSimulation() {
+            const consoleEl = document.getElementById('ping-console');
+            const outputEl = document.getElementById('ping-output');
+            consoleEl.classList.remove('hidden');
+            outputEl.innerHTML = `<div class="text-slate-400">client1@windows:~$ ping ${state.network.serverIp} -n 3</div>`;
+
+            const sameSub = isSameSubnet(state.network.serverIp, state.network.client1Ip);
+            triggerPacketAnimation('to-server', 'ICMP Echo', 2200);
+
+            let count = 0;
+            const interval = setInterval(() => {
+                count++;
+                if (sameSub) {
+                    const ms = Math.floor(Math.random() * 3) + 1;
+                    outputEl.innerHTML += `<div>Reply from ${state.network.serverIp}: bytes=32 time=${ms}ms TTL=64</div>`;
+                } else {
+                    outputEl.innerHTML += `<div class="text-rose-400">Destination host unreachable (Beda Network/Subnet).</div>`;
+                }
+                outputEl.scrollTop = outputEl.scrollHeight;
+
+                if (count >= 3) {
+                    clearInterval(interval);
+                    if (sameSub) {
+                        outputEl.innerHTML += `<div class="text-sky-400 mt-1">Ping statistics: Sent = 3, Received = 3, Lost = 0 (0% loss)</div>`;
+                        completeTask('pingTested');
+                    }
+                }
+            }, 550);
+        }
+
+        // --- 6. TAB NAVIGATION ---
+        function switchTab(tab) {
+            const ftpMod = document.getElementById('module-ftp');
+            const smbMod = document.getElementById('module-samba');
+            const btnFtp = document.getElementById('tab-btn-ftp');
+            const btnSmb = document.getElementById('tab-btn-samba');
+
+            const activeClasses = ['bg-white', 'dark:bg-slate-800', 'text-blue-600', 'dark:text-blue-400', 'shadow-sm'];
+            const inactiveClasses = ['text-slate-600', 'dark:text-slate-400', 'hover:text-slate-900', 'dark:hover:text-white'];
+
+            if (tab === 'ftp') {
+                ftpMod.classList.remove('hidden');
+                smbMod.classList.add('hidden');
+                btnFtp.classList.add(...activeClasses);
+                btnFtp.classList.remove(...inactiveClasses);
+                btnSmb.classList.remove(...activeClasses);
+                btnSmb.classList.add(...inactiveClasses);
+            } else {
+                smbMod.classList.remove('hidden');
+                ftpMod.classList.add('hidden');
+                btnSmb.classList.add(...activeClasses);
+                btnSmb.classList.remove(...inactiveClasses);
+                btnFtp.classList.remove(...activeClasses);
+                btnFtp.classList.add(...inactiveClasses);
+            }
+        }
+
+        function switchSidebarTab(tab) {
+            const lkpdContent = document.getElementById('sidebar-lkpd-content');
+            const quizContent = document.getElementById('sidebar-quiz-content');
+            const btnLkpd = document.getElementById('side-tab-lkpd');
+            const btnQuiz = document.getElementById('side-tab-quiz');
+
+            if (tab === 'lkpd') {
+                lkpdContent.classList.remove('hidden');
+                quizContent.classList.add('hidden');
+                btnLkpd.className = 'py-3.5 text-xs font-bold border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1.5';
+                btnQuiz.className = 'py-3.5 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center gap-1.5';
+            } else {
+                quizContent.classList.remove('hidden');
+                lkpdContent.classList.add('hidden');
+                btnQuiz.className = 'py-3.5 text-xs font-bold border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 flex items-center justify-center gap-1.5';
+                btnLkpd.className = 'py-3.5 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center gap-1.5';
+            }
+        }
+
+        // --- 7. MODULE 1: FTP SERVER (VSFTPD) & CLIENT LOGIC ---
+        function toggleFtpService() {
+            state.ftp.serviceRunning = !state.ftp.serviceRunning;
+            if (!state.ftp.serviceRunning && state.ftp.connected) {
+                disconnectFtpClient();
+            }
+            renderFtpServerConfig();
+            showToast(
+                state.ftp.serviceRunning ? 'Service vsftpd Aktif' : 'Service vsftpd Dihentikan',
+                state.ftp.serviceRunning ? 'Server siap menerima koneksi FTP.' : 'Daemon vsftpd berhenti.',
+                state.ftp.serviceRunning ? 'success' : 'warning'
+            );
+        }
+
+        function updateVsftpdConfig() {
+            state.ftp.anonymousEnable = document.getElementById('ftp-anon-enable').checked;
+            state.ftp.localEnable = document.getElementById('ftp-local-enable').checked;
+            state.ftp.writeEnable = document.getElementById('ftp-write-enable').checked;
+            state.ftp.port = parseInt(document.getElementById('ftp-port-input').value) || 21;
+
+            if (state.ftp.writeEnable) {
+                completeTask('ftpWriteEnabled');
+            }
+
+            renderFtpServerConfig();
+            logFtpProtocol('System', 'Konfigurasi /etc/vsftpd.conf dimuat ulang (systemctl restart vsftpd).', 'text-amber-400');
+        }
+
+        function renderFtpServerConfig() {
+            // Update Service Button & Topology Badge
+            const btn = document.getElementById('toggle-vsftpd-btn');
+            const badge = document.getElementById('badge-vsftpd');
+            const led = document.getElementById('srv-ftp-led');
+
+            if (state.ftp.serviceRunning) {
+                btn.className = 'px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition';
+                btn.innerHTML = '<i class="fa-solid fa-power-off mr-1"></i> Active (Running)';
+                badge.className = 'px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium';
+                badge.textContent = 'vsftpd: ON';
+                led.className = 'w-2 h-2 rounded-full bg-emerald-500';
+            } else {
+                btn.className = 'px-3 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition';
+                btn.innerHTML = '<i class="fa-solid fa-power-off mr-1"></i> Inactive (Stopped)';
+                badge.className = 'px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 font-medium';
+                badge.textContent = 'vsftpd: OFF';
+                led.className = 'w-2 h-2 rounded-full bg-rose-500';
+            }
+
+            // Preview Code
+            const code = `listen=YES
+listen_port=${state.ftp.port}
+anonymous_enable=${state.ftp.anonymousEnable ? 'YES' : 'NO'}
+local_enable=${state.ftp.localEnable ? 'YES' : 'NO'}
+write_enable=${state.ftp.writeEnable ? 'YES' : 'NO'}
+dirmessage_enable=YES
+use_localtime=YES
+xferlog_enable=YES
+chroot_local_user=YES`;
+            document.getElementById('vsftpd-code-preview').textContent = code;
+
+            // User List
+            const userListEl = document.getElementById('ftp-users-list');
+            userListEl.innerHTML = state.ftp.users.map(u => `
+                <span class="px-2 py-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-[11px] flex items-center gap-1.5">
+                    <i class="fa-solid fa-user text-blue-500"></i> ${u.username} <span class="text-slate-400">(${u.password})</span>
+                </span>
+            `).join('');
+        }
+
+        function openAddFtpUserModal() {
+            openModal({
+                title: 'Tambah User FTP Baru',
+                desc: 'Buat akun user Linux baru untuk login ke FTP Server (Password default: 12345).',
+                showInput: true,
+                inputPlaceholder: 'Masukkan username (misal: kelompok1)',
+                onConfirm: (username) => {
+                    if (!username) return;
+                    const cleanUser = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                    if (state.ftp.users.some(u => u.username === cleanUser)) {
+                        showToast('User Sudah Ada', 'Gunakan nama user lain.', 'warning');
+                        return;
+                    }
+                    state.ftp.users.push({ username: cleanUser, password: '12345', home: `/home/${cleanUser}/ftp` });
+                    renderFtpServerConfig();
+                    showToast('User FTP Ditambahkan', `User "${cleanUser}" (pass: 12345) siap digunakan.`, 'success');
+                }
+            });
+        }
+
+        function logFtpProtocol(prefix, msg, colorClass = 'text-slate-300') {
+            const logEl = document.getElementById('ftp-protocol-log');
+            const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
+            logEl.innerHTML += `<div class="${colorClass}"><span class="text-slate-500">[${time}]</span> <strong>${prefix}:</strong> ${msg}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function connectFtpClient() {
+            const host = document.getElementById('fz-host').value.trim();
+            const user = document.getElementById('fz-user').value.trim();
+            const pass = document.getElementById('fz-pass').value.trim();
+            const port = parseInt(document.getElementById('fz-port').value) || 21;
+
+            logFtpProtocol('Status', `Menghubungkan ke ${host}:${port}...`, 'text-sky-400');
+            triggerPacketAnimation('to-server', `FTP SYN:${port}`, 1200);
+
+            if (!isSameSubnet(host, state.network.client1Ip) || host !== state.network.serverIp) {
+                logFtpProtocol('Error', `Connection timed out. Host ${host} tidak ditemukan di jaringan.`, 'text-rose-400');
+                showToast('Koneksi Gagal', 'Pastikan IP Host sesuai dengan IP Server.', 'error');
+                return;
+            }
+
+            if (!state.ftp.serviceRunning) {
+                logFtpProtocol('Error', `Connection refused by server (Service vsftpd mati).`, 'text-rose-400');
+                showToast('Koneksi Ditolak', 'Layanan vsftpd pada server sedang tidak aktif!', 'error');
+                return;
+            }
+
+            if (port !== state.ftp.port) {
+                logFtpProtocol('Error', `Connection refused on port ${port}. Server berjalan di port ${state.ftp.port}.`, 'text-rose-400');
+                showToast('Port Salah', `Server FTP berjalan pada port ${state.ftp.port}.`, 'error');
+                return;
+            }
+
+            logFtpProtocol('Response', '220 (vsFTPd 3.0.5) Service ready for new user.', 'text-emerald-400');
+            logFtpProtocol('Command', `USER ${user}`, 'text-slate-200');
+
+            // Check Anonymous
+            if (user.toLowerCase() === 'anonymous') {
+                if (!state.ftp.anonymousEnable) {
+                    logFtpProtocol('Response', '530 Permission denied (Anonymous login dinonaktifkan).', 'text-rose-400');
+                    showToast('Login Ditolak', 'Anonymous login dinonaktifkan di vsftpd.conf.', 'error');
+                    return;
+                }
+                state.ftp.connected = true;
+                state.ftp.currentUser = { username: 'anonymous', home: '/srv/ftp/pub' };
+            } else {
+                // Check Local User
+                if (!state.ftp.localEnable) {
+                    logFtpProtocol('Response', '530 This FTP server is anonymous only (local_enable=NO).', 'text-rose-400');
+                    return;
+                }
+                const foundUser = state.ftp.users.find(u => u.username === user && u.password === pass);
+                if (!foundUser) {
+                    logFtpProtocol('Command', 'PASS ********', 'text-slate-200');
+                    logFtpProtocol('Response', '530 Login incorrect. Periksa username atau password.', 'text-rose-400');
+                    showToast('Autentikasi Gagal', 'Username atau Password FTP salah.', 'error');
+                    return;
+                }
+                logFtpProtocol('Command', 'PASS ********', 'text-slate-200');
+                state.ftp.connected = true;
+                state.ftp.currentUser = foundUser;
+            }
+
+            logFtpProtocol('Response', '230 Login successful.', 'text-emerald-400');
+            logFtpProtocol('Command', 'PASV (Entering Passive Mode)', 'text-slate-200');
+            logFtpProtocol('Command', 'LIST', 'text-slate-200');
+            logFtpProtocol('Response', '226 Directory send OK.', 'text-emerald-400');
+
+            completeTask('ftpConnected');
+            renderFtpPanes();
+            showToast('Terhubung ke FTP Server', `Login sebagai ${state.ftp.currentUser.username}`, 'success');
+        }
+
+        function disconnectFtpClient() {
+            if (!state.ftp.connected) return;
+            logFtpProtocol('Command', 'QUIT', 'text-slate-200');
+            logFtpProtocol('Response', '221 Goodbye.', 'text-amber-400');
+            state.ftp.connected = false;
+            state.ftp.currentUser = null;
+            renderFtpPanes();
+        }
+
+        function renderFtpPanes() {
+            const connStatus = document.getElementById('ftp-conn-status');
+            const connBtn = document.getElementById('fz-connect-btn');
+            const discBtn = document.getElementById('fz-disconnect-btn');
+            const remotePath = document.getElementById('ftp-remote-path');
+
+            if (state.ftp.connected) {
+                connStatus.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400';
+                connStatus.textContent = `Terhubung (${state.ftp.currentUser.username})`;
+                connBtn.classList.add('hidden');
+                discBtn.classList.remove('hidden');
+                remotePath.textContent = state.ftp.currentUser.home;
+            } else {
+                connStatus.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
+                connStatus.textContent = 'Tidak Terhubung';
+                connBtn.classList.remove('hidden');
+                discBtn.classList.add('hidden');
+                remotePath.textContent = '/home/siswa/ftp';
+            }
+
+            // Render Local Files
+            const localEl = document.getElementById('ftp-local-files');
+            localEl.innerHTML = state.ftp.localFiles.map((f, idx) => `
+                <div class="px-3 py-2 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800/70 transition text-xs">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <i class="fa-solid fa-file-lines text-sky-500"></i>
+                        <span class="truncate font-medium">${f.name}</span>
+                        <span class="text-[10px] text-slate-400 shrink-0">${f.size}</span>
+                    </div>
+                    <button onclick="uploadFtpFile(${idx})" class="px-2 py-1 rounded bg-blue-600/10 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white transition text-[11px] font-semibold shrink-0" title="Upload ke Server">
+                        <i class="fa-solid fa-upload mr-1"></i>Upload
+                    </button>
+                </div>
+            `).join('');
+
+            // Render Remote Files
+            const remoteEl = document.getElementById('ftp-remote-files');
+            if (!state.ftp.connected) {
+                remoteEl.innerHTML = `<div class="p-8 text-center text-xs text-slate-400">Belum terhubung ke server FTP</div>`;
+                return;
+            }
+
+            if (state.ftp.remoteFiles.length === 0) {
+                remoteEl.innerHTML = `<div class="p-8 text-center text-xs text-slate-400">Direktori kosong</div>`;
+                return;
+            }
+
+            remoteEl.innerHTML = state.ftp.remoteFiles.map((f, idx) => `
+                <div class="px-3 py-2 flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-800/70 transition text-xs">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <i class="fa-solid ${f.type === 'folder' ? 'fa-folder text-amber-400' : 'fa-file-code text-emerald-500'}"></i>
+                        <span class="truncate font-medium">${f.name}</span>
+                        <span class="text-[10px] text-slate-400 shrink-0">${f.size}</span>
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0">
+                        ${f.type === 'file' ? `
+                            <button onclick="downloadFtpFile(${idx})" class="p-1.5 rounded bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white transition" title="Download ke Lokal">
+                                <i class="fa-solid fa-download"></i>
+                            </button>
+                        ` : ''}
+                        <button onclick="deleteFtpRemoteFile(${idx})" class="p-1.5 rounded bg-rose-600/10 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white transition" title="Hapus dari Server">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function uploadFtpFile(index) {
+            if (!state.ftp.connected) {
+                showToast('Belum Terhubung', 'Klik Quickconnect terlebih dahulu untuk login ke FTP Server.', 'warning');
+                return;
+            }
+            const file = state.ftp.localFiles[index];
+            logFtpProtocol('Command', `STOR ${file.name}`, 'text-slate-200');
+
+            if (!state.ftp.writeEnable) {
+                logFtpProtocol('Response', '550 Permission denied (write_enable=NO pada server).', 'text-rose-400');
+                showToast('Upload Ditolak (550)', 'Aktifkan opsi write_enable pada konfigurasi vsftpd.conf!', 'error');
+                return;
+            }
+
+            triggerPacketAnimation('to-server', `FTP STOR: ${file.name}`, 1600);
+            if (!state.ftp.remoteFiles.some(rf => rf.name === file.name)) {
+                state.ftp.remoteFiles.push({ ...file });
+            }
+            logFtpProtocol('Response', `226 Transfer complete (${file.size} terkirim).`, 'text-emerald-400');
+            completeTask('ftpUploaded');
+            renderFtpPanes();
+            showToast('Upload Berhasil', `File ${file.name} berhasil diunggah ke server.`, 'success');
+        }
+
+        function downloadFtpFile(index) {
+            if (!state.ftp.connected) return;
+            const file = state.ftp.remoteFiles[index];
+            logFtpProtocol('Command', `RETR ${file.name}`, 'text-slate-200');
+            triggerPacketAnimation('to-client', `FTP RETR: ${file.name}`, 1600);
+
+            if (!state.ftp.localFiles.some(lf => lf.name === file.name)) {
+                state.ftp.localFiles.push({ ...file });
+            }
+            logFtpProtocol('Response', `226 Transfer complete (${file.size} diunduh).`, 'text-emerald-400');
+            renderFtpPanes();
+            showToast('Download Berhasil', `File ${file.name} tersimpan di Local Site.`, 'success');
+        }
+
+        function deleteFtpRemoteFile(index) {
+            if (!state.ftp.connected) return;
+            const file = state.ftp.remoteFiles[index];
+            const cmd = file.type === 'folder' ? `RMD ${file.name}` : `DELE ${file.name}`;
+            logFtpProtocol('Command', cmd, 'text-slate-200');
+
+            if (!state.ftp.writeEnable) {
+                logFtpProtocol('Response', '550 Permission denied (write_enable=NO).', 'text-rose-400');
+                showToast('Hapus Ditolak', 'Server dalam mode Read-Only (write_enable=NO).', 'error');
+                return;
+            }
+
+            state.ftp.remoteFiles.splice(index, 1);
+            logFtpProtocol('Response', '250 Requested file action okay, completed.', 'text-emerald-400');
+            renderFtpPanes();
+            showToast('Terhapus', `${file.name} dihapus dari server.`, 'info');
+        }
+
+        function createRemoteFtpFolder() {
+            if (!state.ftp.connected) {
+                showToast('Belum Terhubung', 'Hubungkan ke FTP server terlebih dahulu.', 'warning');
+                return;
+            }
+            openModal({
+                title: 'Buat Folder Baru di FTP Server',
+                desc: 'Masukkan nama direktori yang akan dibuat di Remote Site:',
+                showInput: true,
+                inputPlaceholder: 'Contoh: tugas_kelompok',
+                onConfirm: (folderName) => {
+                    if (!folderName) return;
+                    logFtpProtocol('Command', `MKD ${folderName}`, 'text-slate-200');
+                    if (!state.ftp.writeEnable) {
+                        logFtpProtocol('Response', '550 Create directory operation failed (write_enable=NO).', 'text-rose-400');
+                        showToast('Gagal Membuat Folder', 'Aktifkan write_enable pada vsftpd.conf terlebih dahulu.', 'error');
+                        return;
+                    }
+                    state.ftp.remoteFiles.unshift({ name: folderName, size: '-', type: 'folder' });
+                    logFtpProtocol('Response', `257 "/${folderName}" created.`, 'text-emerald-400');
+                    completeTask('ftpFolderCreated');
+                    renderFtpPanes();
+                    showToast('Folder Dibuat', `Direktori ${folderName} berhasil dibuat.`, 'success');
+                }
+            });
+        }
+
+        function createLocalFtpFile() {
+            openModal({
+                title: 'Buat File Lokal Baru',
+                desc: 'Buat file dokumen baru di komputer Client 1 untuk diuji upload ke FTP:',
+                showInput: true,
+                inputPlaceholder: 'Nama file (misal: konfigurasi.txt)',
+                onConfirm: (fileName) => {
+                    if (!fileName) return;
+                    const finalName = fileName.includes('.') ? fileName : `${fileName}.txt`;
+                    state.ftp.localFiles.unshift({ name: finalName, size: '12 KB', type: 'file', content: 'Data uji coba.' });
+                    renderFtpPanes();
+                    showToast('File Lokal Dibuat', `${finalName} siap diunggah.`, 'info');
+                }
+            });
+        }
+
+        // --- 8. MODULE 2: SAMBA / FILE SHARING LOGIC ---
+        function toggleSmbService() {
+            state.samba.serviceRunning = !state.samba.serviceRunning;
+            renderSambaConfig();
+            showToast(
+                state.samba.serviceRunning ? 'Service smbd Aktif' : 'Service smbd Dihentikan',
+                state.samba.serviceRunning ? 'Layanan Samba File Sharing berjalan.' : 'Layanan Samba dihentikan.',
+                state.samba.serviceRunning ? 'success' : 'warning'
+            );
+        }
+
+        function updateSmbConfig() {
+            state.samba.workgroup = document.getElementById('smb-workgroup').value.trim() || 'WORKGROUP';
+            state.samba.shareName = document.getElementById('smb-sharename').value.trim() || 'SharedData';
+            state.samba.path = document.getElementById('smb-path').value.trim() || '/srv/samba/shared';
+            state.samba.writable = document.getElementById('smb-writable').checked;
+            state.samba.guestOk = document.getElementById('smb-guest').checked;
+
+            document.getElementById('smb-unc-input').value = `\\\\${state.network.serverIp}\\${state.samba.shareName}`;
+            
+            if (state.samba.writable) {
+                completeTask('smbWritableEnabled');
+            }
+
+            state.samba.authenticated = false;
+            renderSambaConfig();
+            if (state.samba.shareOpened) {
+                accessSmbShare();
+            }
+        }
+
+        function renderSambaConfig() {
+            const btn = document.getElementById('toggle-smbd-btn');
+            const badge = document.getElementById('badge-smbd');
+            const led = document.getElementById('srv-smb-led');
+            const permBadge = document.getElementById('smb-perm-badge');
+
+            if (state.samba.serviceRunning) {
+                btn.className = 'px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition';
+                btn.innerHTML = '<i class="fa-solid fa-power-off mr-1"></i> smbd Active';
+                badge.className = 'px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-medium';
+                badge.textContent = 'smbd: ON';
+                led.className = 'w-2 h-2 rounded-full bg-emerald-500';
+            } else {
+                btn.className = 'px-3 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition';
+                btn.innerHTML = '<i class="fa-solid fa-power-off mr-1"></i> smbd Stopped';
+                badge.className = 'px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 font-medium';
+                badge.textContent = 'smbd: OFF';
+                led.className = 'w-2 h-2 rounded-full bg-rose-500';
+            }
+
+            permBadge.textContent = state.samba.writable ? 'Read / Write' : 'Read-Only';
+            permBadge.className = state.samba.writable 
+                ? 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300' 
+                : 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300';
+
+            const smbCode = `[global]
+   workgroup = ${state.samba.workgroup}
+   security = user
+   map to guest = Bad User
+
+[${state.samba.shareName}]
+   path = ${state.samba.path}
+   browseable = yes
+   writable = ${state.samba.writable ? 'yes' : 'no'}
+   guest ok = ${state.samba.guestOk ? 'yes' : 'no'}
+   create mask = 0775`;
+
+            document.getElementById('smb-code-preview').textContent = smbCode;
+        }
+
+        function setSmbActiveClient(clientName) {
+            state.samba.activeClient = clientName;
+            const c1Btn = document.getElementById('smb-c1-btn');
+            const c2Btn = document.getElementById('smb-c2-btn');
+
+            if (clientName.includes('Client 1')) {
+                c1Btn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-white dark:bg-slate-700 shadow-sm transition';
+                c2Btn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold text-slate-600 dark:text-slate-400 transition';
+            } else {
+                c2Btn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-white dark:bg-slate-700 shadow-sm transition';
+                c1Btn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold text-slate-600 dark:text-slate-400 transition';
+            }
+
+            if (state.samba.shareOpened) {
+                accessSmbShare();
+            }
+        }
+
+        function accessSmbShare() {
+            const unc = document.getElementById('smb-unc-input').value.trim();
+            const expectedUnc = `\\\\${state.network.serverIp}\\${state.samba.shareName}`;
+            const altUnc = `//${state.network.serverIp}/${state.samba.shareName}`;
+
+            if (!isSameSubnet(state.network.serverIp, state.network.client1Ip)) {
+                showToast('Network Error', 'Client dan Server berada di subnet berbeda!', 'error');
+                return;
+            }
+
+            if (!state.samba.serviceRunning) {
+                showToast('Windows Cannot Access', 'Layanan Samba (smbd) pada server sedang mati.', 'error');
+                return;
+            }
+
+            if (unc.toLowerCase() !== expectedUnc.toLowerCase() && unc.toLowerCase() !== altUnc.toLowerCase()) {
+                showToast('Path Tidak Ditemukan', `Gunakan format UNC: ${expectedUnc}`, 'error');
+                return;
+            }
+
+            triggerPacketAnimation('to-server', 'SMB2 Tree Connect', 1400);
+            state.samba.shareOpened = true;
+
+            const authBox = document.getElementById('smb-auth-box');
+            const explorerBody = document.getElementById('smb-explorer-body');
+
+            // Check if authentication is required
+            if (!state.samba.guestOk && !state.samba.authenticated) {
+                authBox.classList.remove('hidden');
+                explorerBody.classList.add('opacity-40', 'pointer-events-none');
+                return;
+            }
+
+            authBox.classList.add('hidden');
+            explorerBody.classList.remove('opacity-40', 'pointer-events-none');
+
+            // Check task 8: Cross client verification (Client 2 views file created by Client 1)
+            if (state.samba.activeClient.includes('Client 2') && state.tasks.smbFileCreated) {
+                completeTask('smbCrossClientVerified');
+            }
+
+            renderSmbFiles();
+        }
+
+        function authenticateSmb() {
+            const u = document.getElementById('smb-login-user').value.trim();
+            const p = document.getElementById('smb-login-pass').value.trim();
+
+            if (u === 'admin' && p === 'tkj123') {
+                state.samba.authenticated = true;
+                showToast('Autentikasi Berhasil', 'Akses diberikan ke folder jaringan.', 'success');
+                accessSmbShare();
+            } else {
+                showToast('Akses Ditolak', 'Username atau password Samba salah (Coba: admin / tkj123).', 'error');
+            }
+        }
+
+        function renderSmbFiles() {
+            const label = document.getElementById('smb-current-view-label');
+            const grid = document.getElementById('smb-files-grid');
+
+            label.innerHTML = `Mengakses <code class="font-mono text-indigo-500">\\\\${state.network.serverIp}\\${state.samba.shareName}</code> dari <strong>${state.samba.activeClient}</strong> • Mode: <strong>${state.samba.writable ? 'Read/Write' : 'Read-Only'}</strong>`;
+
+            grid.innerHTML = state.samba.sharedFiles.map((f, idx) => `
+                <div class="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition flex flex-col justify-between group">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-file-lines"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h5 class="font-semibold text-xs truncate" title="${f.name}">${f.name}</h5>
+                                <span class="text-[10px] text-slate-400 block">Oleh: ${f.owner} • ${f.size}</span>
+                            </div>
+                        </div>
+                        <button onclick="deleteSmbFile(${idx})" class="text-slate-400 hover:text-rose-500 p-1 transition" title="Hapus File">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                    </div>
+                    <div class="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                        <button onclick="viewSmbFileContent(${idx})" class="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                            Buka / Baca Isi &rarr;
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function createSmbTextFile() {
+            if (!state.samba.shareOpened) {
+                showToast('Buka Share Dahulu', 'Klik tombol "Buka Share" pada address bar.', 'warning');
+                return;
+            }
+
+            if (!state.samba.writable) {
+                showToast('Folder Access Denied', 'Gagal menulis! Folder ini berstatus Read-Only (writable = no).', 'error');
+                return;
+            }
+
+            openModal({
+                title: `Buat File Baru di \\\\${state.network.serverIp}\\${state.samba.shareName}`,
+                desc: `File akan disimpan ke server oleh ${state.samba.activeClient} dan dapat dibaca oleh client lain.`,
+                showInput: true,
+                showTextarea: true,
+                inputPlaceholder: 'Nama file (misal: catatan_kelompok.txt)',
+                onConfirm: (name, content) => {
+                    if (!name) return;
+                    const fileName = name.endsWith('.txt') ? name : `${name}.txt`;
+                    triggerPacketAnimation('to-server', `SMB2 Write: ${fileName}`, 1600);
+                    state.samba.sharedFiles.push({
+                        name: fileName,
+                        owner: state.samba.activeClient,
+                        size: `${Math.max(1, content.length)} B`,
+                        content: content || 'File dibuat melalui Samba Network Share.'
+                    });
+                    completeTask('smbFileCreated');
+                    renderSmbFiles();
+                    showToast('File Tersimpan', `${fileName} berhasil dibuat di server Samba.`, 'success');
+                }
+            });
+        }
+
+        function viewSmbFileContent(idx) {
+            const f = state.samba.sharedFiles[idx];
+            triggerPacketAnimation('to-client', `SMB2 Read: ${f.name}`, 1200);
+            openModal({
+                title: f.name,
+                desc: `Dibuat oleh: ${f.owner} | Isi dokumen:\n\n"${f.content}"`
+            });
+        }
+
+        function deleteSmbFile(idx) {
+            if (!state.samba.writable) {
+                showToast('Permission Denied', 'Tidak dapat menghapus file karena share berstatus Read-Only.', 'error');
+                return;
+            }
+            const removed = state.samba.sharedFiles.splice(idx, 1)[0];
+            renderSmbFiles();
+            showToast('File Dihapus', `${removed.name} dihapus dari share folder.`, 'info');
+        }
+
+        // --- 9. LKPD CHECKLIST & PROGRESS ---
+        function completeTask(taskKey) {
+            if (!state.tasks[taskKey]) {
+                state.tasks[taskKey] = true;
+                renderLkpdChecklist();
+                const taskObj = lkpdTasks.find(t => t.id === taskKey);
+                if (taskObj) {
+                    showToast('Kompetensi Tercapai!', taskObj.title, 'success');
+                }
+            }
+        }
+
+        function renderLkpdChecklist() {
+            const listEl = document.getElementById('lkpd-checklist');
+            let completedCount = 0;
+
+            listEl.innerHTML = lkpdTasks.map(task => {
+                const isDone = state.tasks[task.id];
+                if (isDone) completedCount++;
+
+                return `
+                    <div class="p-3 rounded-xl border transition-all ${isDone 
+                        ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-200 dark:border-emerald-800/60' 
+                        : 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-800'}">
+                        <div class="flex items-start gap-2.5">
+                            <div class="mt-0.5 w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${isDone 
+                                ? 'bg-emerald-500 text-white' 
+                                : 'border-2 border-slate-300 dark:border-slate-600'}">
+                                ${isDone ? '<i class="fa-solid fa-check text-[9px]"></i>' : ''}
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-bold ${isDone ? 'text-emerald-800 dark:text-emerald-300 line-through decoration-emerald-500/50' : 'text-slate-800 dark:text-slate-200'}">${task.title}</h4>
+                                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">${task.desc}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const pct = Math.round((completedCount / lkpdTasks.length) * 100);
+            document.getElementById('header-progress-text').textContent = `${completedCount}/${lkpdTasks.length}`;
+            document.getElementById('lkpd-percentage').textContent = `${pct}%`;
+            document.getElementById('lkpd-progress-bar').style.width = `${pct}%`;
+
+            const banner = document.getElementById('lkpd-complete-banner');
+            if (completedCount === lkpdTasks.length) {
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        // --- 10. INTERACTIVE QUIZ ENGINE ---
+        let userAnswers = {};
+        let quizSubmitted = false;
+
+        function renderQuiz() {
+            userAnswers = {};
+            quizSubmitted = false;
+            const container = document.getElementById('quiz-container');
+            
+            container.innerHTML = `
+                <div class="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                    <span class="text-xs font-bold text-slate-700 dark:text-slate-300">Evaluasi Pemahaman (6 Soal)</span>
+                    <span id="quiz-score-badge" class="hidden px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-600 text-white">Skor: 0</span>
+                </div>
+                <div class="space-y-4 max-h-[540px] overflow-y-auto pr-1">
+                    ${quizQuestions.map((item, qIdx) => `
+                        <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                            <p class="text-xs font-semibold leading-relaxed">${qIdx + 1}. ${item.q}</p>
+                            <div class="space-y-1.5">
+                                ${item.options.map((opt, oIdx) => `
+                                    <label id="q-${qIdx}-opt-${oIdx}" class="flex items-center gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900 text-[11px] cursor-pointer hover:border-blue-500 transition">
+                                        <input type="radio" name="quiz-${qIdx}" value="${oIdx}" onchange="userAnswers[${qIdx}] = ${oIdx}" class="accent-blue-600">
+                                        <span>${opt}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                            <div id="q-exp-${qIdx}" class="hidden text-[11px] p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-900"></div>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="pt-2 flex gap-2">
+                    <button id="submit-quiz-btn" onclick="submitQuiz()" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm">
+                        Periksa Jawaban & Lihat Skor
+                    </button>
+                    <button id="retry-quiz-btn" onclick="renderQuiz()" class="hidden px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition">
+                        Ulangi
+                    </button>
+                </div>
+            `;
+        }
+
+        function submitQuiz() {
+            if (Object.keys(userAnswers).length < quizQuestions.length) {
+                showToast('Belum Lengkap', 'Silakan jawab semua pertanyaan sebelum memeriksa nilai.', 'warning');
+                return;
+            }
+
+            let correct = 0;
+            quizQuestions.forEach((item, qIdx) => {
+                const chosen = userAnswers[qIdx];
+                const isCorrect = chosen === item.answer;
+                if (isCorrect) correct++;
+
+                // Disable inputs & highlight answers
+                item.options.forEach((_, oIdx) => {
+                    const label = document.getElementById(`q-${qIdx}-opt-${oIdx}`);
+                    const input = label.querySelector('input');
+                    input.disabled = true;
+
+                    if (oIdx === item.answer) {
+                        label.classList.add('border-emerald-500', 'bg-emerald-50', 'dark:bg-emerald-950/40', 'text-emerald-700', 'dark:text-emerald-300', 'font-semibold');
+                    } else if (oIdx === chosen && !isCorrect) {
+                        label.classList.add('border-rose-500', 'bg-rose-50', 'dark:bg-rose-950/40', 'text-rose-700', 'dark:text-rose-300');
+                    }
+                });
+
+                const expEl = document.getElementById(`q-exp-${qIdx}`);
+                expEl.classList.remove('hidden');
+                expEl.innerHTML = `<strong>${isCorrect ? 'Benar!' : 'Kurang Tepat.'}</strong> ${item.explanation}`;
+            });
+
+            const score = Math.round((correct / quizQuestions.length) * 100);
+            const scoreBadge = document.getElementById('quiz-score-badge');
+            scoreBadge.textContent = `Nilai: ${score} (${correct}/${quizQuestions.length})`;
+            scoreBadge.classList.remove('hidden');
+
+            document.getElementById('submit-quiz-btn').classList.add('hidden');
+            document.getElementById('retry-quiz-btn').classList.remove('hidden');
+
+            showToast('Kuis Selesai', `Nilai Evaluasi Anda: ${score} / 100`, score >= 75 ? 'success' : 'warning');
+        }
+
+        // Master Render
+        function renderAll() {
+            updateTopologyUI();
+            renderFtpServerConfig();
+            renderFtpPanes();
+            renderSambaConfig();
+            renderLkpdChecklist();
+        }
+    </script>
+</body>
+</html>
